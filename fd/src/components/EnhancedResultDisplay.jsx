@@ -28,23 +28,16 @@ import confetti from 'canvas-confetti';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const EnhancedResultDisplay = ({ result, onNewPrediction, addToHistory }) => {
+const EnhancedResultDisplay = ({ result, onNewPrediction }) => {
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [progressValue, setProgressValue] = useState(0);
 
   useEffect(() => {
     if (result) {
-      // Add to history
-      if (addToHistory) {
-        addToHistory({
-          ...result,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      // Animate progress
+      // Animate progress - use confidence as the main score display
       const timer = setTimeout(() => {
-        setProgressValue(result.severity_score * 100);
+        const scoreValue = result.confidence * 100;
+        setProgressValue(scoreValue);
       }, 300);
 
       // Trigger confetti for low risk
@@ -73,11 +66,38 @@ const EnhancedResultDisplay = ({ result, onNewPrediction, addToHistory }) => {
 
   if (!result) return null;
 
-  const { risk_level, severity_score, confidence, risk_factors, recommendations } = result;
+  // Handle new binary API response format
+  const prediction = result.prediction || 'Low Risk'; // "High Risk" or "Low Risk"
+  const label = result.label || 0; // 1 or 0
+  const probability = result.probability || 0;
+  const raw_proba = result.raw_proba || [0, 0]; // [prob_low, prob_high]
+  
+  // Convert to old format for compatibility
+  const risk_level = prediction.includes('High') ? 'HIGH' : 'LOW';
+  const confidence = probability;
+  const probability_distribution = {
+    'Low Risk': raw_proba[0],
+    'High Risk': raw_proba[1],
+  };
+  const predicted_severity = risk_level;
+    
+  // Handle risk_factors - API returns array
+  const risk_factors_array = result.risk_factors || [];
+  const risk_factors = risk_factors_array.length > 0 
+    ? risk_factors_array.reduce((acc, factor, index) => {
+        acc[factor] = 0.7 - (index * 0.1); // Assign decreasing values for visualization
+        return acc;
+      }, {})
+    : {};
+    
+  const recommendations = result.recommendations || [];
 
   const getRiskConfig = () => {
-    switch (risk_level) {
-      case 'High':
+    const normalizedRiskLevel = risk_level.toUpperCase();
+    
+    // Binary classification: only HIGH and LOW
+    switch (normalizedRiskLevel) {
+      case 'HIGH':
         return {
           gradient: 'from-red-500 via-red-600 to-red-700',
           bg: 'bg-red-50 dark:bg-red-900/10',
@@ -86,36 +106,19 @@ const EnhancedResultDisplay = ({ result, onNewPrediction, addToHistory }) => {
           icon: AlertTriangle,
           ringColor: '#ef4444',
           message: 'High risk detected! Exercise extreme caution.',
+          displayName: 'High Risk',
         };
-      case 'Medium':
-        return {
-          gradient: 'from-amber-500 via-orange-500 to-orange-600',
-          bg: 'bg-orange-50 dark:bg-orange-900/10',
-          border: 'border-orange-500',
-          text: 'text-orange-700 dark:text-orange-400',
-          icon: AlertCircle,
-          ringColor: '#f59e0b',
-          message: 'Moderate risk. Stay alert and drive carefully.',
-        };
-      case 'Low':
-        return {
-          gradient: 'from-emerald-500 via-green-500 to-green-600',
-          bg: 'bg-green-50 dark:bg-green-900/10',
-          border: 'border-green-500',
-          text: 'text-green-700 dark:text-green-400',
-          icon: CheckCircle,
-          ringColor: '#10b981',
-          message: 'Low risk. Safe conditions detected!',
-        };
+      case 'LOW':
       default:
         return {
-          gradient: 'from-gray-500 via-gray-600 to-gray-700',
-          bg: 'bg-gray-50 dark:bg-gray-900/10',
-          border: 'border-gray-500',
-          text: 'text-gray-700 dark:text-gray-400',
-          icon: Info,
-          ringColor: '#6b7280',
-          message: 'Risk assessment complete.',
+          gradient: 'from-emerald-500 via-green-600 to-teal-700',
+          bg: 'bg-emerald-50 dark:bg-emerald-900/10',
+          border: 'border-emerald-500',
+          text: 'text-emerald-700 dark:text-emerald-400',
+          icon: CheckCircle,
+          ringColor: '#10b981',
+          message: 'Low risk detected. Stay alert and follow safety guidelines.',
+          displayName: 'Low Risk',
         };
     }
   };
@@ -260,15 +263,14 @@ const EnhancedResultDisplay = ({ result, onNewPrediction, addToHistory }) => {
     doc.text('Risk Assessment', 20, 55);
 
     doc.setFontSize(28);
-    if (risk_level === 'High') doc.setTextColor(220, 38, 38);
-    else if (risk_level === 'Medium') doc.setTextColor(251, 146, 60);
+    if (risk_level === 'HIGH') doc.setTextColor(220, 38, 38);
     else doc.setTextColor(34, 197, 94);
-    doc.text(risk_level, 20, 70);
+    doc.text(config.displayName, 20, 70);
 
     // Metrics
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Severity Score: ${(severity_score * 100).toFixed(2)}%`, 20, 85);
+    doc.text(`Predicted Severity: ${predicted_severity}`, 20, 85);
     doc.text(`Confidence: ${(confidence * 100).toFixed(2)}%`, 20, 95);
 
     // Recommendations
@@ -374,11 +376,11 @@ const EnhancedResultDisplay = ({ result, onNewPrediction, addToHistory }) => {
                         transition={{ type: 'spring', stiffness: 200, delay: 0.5 }}
                       >
                         <span className={config.text}>
-                          {(severity_score * 100).toFixed(1)}%
+                          {(confidence * 100).toFixed(1)}%
                         </span>
                       </motion.div>
                       <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mt-1">
-                        Severity
+                        Confidence
                       </div>
                     </div>
                   </div>
@@ -392,8 +394,24 @@ const EnhancedResultDisplay = ({ result, onNewPrediction, addToHistory }) => {
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ delay: 0.3 }}
                   >
-                    <span className={config.text}>{risk_level} Risk</span>
+                    <span className={config.text}>{config.displayName} Risk</span>
                   </motion.h2>
+                  
+                  {predicted_severity && (
+                    <motion.div
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-white/50 dark:bg-gray-800/50 rounded-lg mb-4"
+                      initial={{ x: 50, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: 0.35 }}
+                    >
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                        Predicted Severity:
+                      </span>
+                      <span className="text-lg font-bold text-brand-blue">
+                        {predicted_severity}
+                      </span>
+                    </motion.div>
+                  )}
 
                   <motion.p
                     className="text-lg text-gray-600 dark:text-gray-300 mb-6"
@@ -422,9 +440,42 @@ const EnhancedResultDisplay = ({ result, onNewPrediction, addToHistory }) => {
                     <div className={`flex items-center gap-3 p-4 ${config.bg} rounded-xl border-2 ${config.border}`}>
                       <Shield className={`w-6 h-6 ${config.text}`} />
                       <span className={`font-semibold ${config.text}`}>
-                        Model Prediction: {risk_level}
+                        Risk Level: {config.displayName}
                       </span>
                     </div>
+                    
+                    {/* Probability Distribution */}
+                    {probability_distribution && Object.keys(probability_distribution).length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          Probability Distribution:
+                        </p>
+                        {Object.entries(probability_distribution).map(([key, value]) => (
+                          <div key={key} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+                              {key}:
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <div className="w-32 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                <motion.div
+                                  className={`h-full ${
+                                    key === 'Fatal' ? 'bg-red-500' :
+                                    key === 'Serious' ? 'bg-orange-500' :
+                                    'bg-green-500'
+                                  }`}
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${value * 100}%` }}
+                                  transition={{ duration: 1, delay: 0.5 }}
+                                />
+                              </div>
+                              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 w-12 text-right">
+                                {(value * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </motion.div>
                 </div>
               </div>

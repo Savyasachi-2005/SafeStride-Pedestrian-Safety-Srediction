@@ -12,70 +12,83 @@ router = APIRouter(prefix="/api", tags=["predictions"])
 
 # Pydantic models for request/response validation
 class PredictionInput(BaseModel):
-    """Input model for prediction request"""
-    # Location
-    Latitude: Optional[float] = Field(default=51.5074, ge=-90, le=90, description="Latitude coordinate")
-    Longitude: Optional[float] = Field(default=-0.1278, ge=-180, le=180, description="Longitude coordinate")
+    """
+    Input model for US Accidents binary prediction
     
-    # Time features
-    Time: Any = Field(default="12:00", description="Time of day (HH:MM or minutes from midnight)")
-    Day_of_Week: str = Field(default="Monday", description="Day of the week")
+    Requires geographic, weather, road, and temporal features
+    """
     
-    # Weather and light conditions
-    Weather_Conditions: Optional[str] = Field(default="Fine", description="Weather conditions")
-    Light_Conditions: Optional[str] = Field(default="Daylight", description="Light conditions")
+    # Geographic features
+    Start_Lat: float = Field(..., ge=-90, le=90, description="Latitude (-90 to 90)")
+    Start_Lng: float = Field(..., ge=-180, le=180, description="Longitude (-180 to 180)")
+    Distance_mi: float = Field(..., ge=0, alias="Distance(mi)", description="Accident extent in miles")
     
-    # Road features
-    Road_Type: Optional[str] = Field(default="Single carriageway", description="Type of road")
-    Road_Surface_Conditions: Optional[str] = Field(default="Dry", description="Road surface condition")
-    Speed_limit: Optional[int] = Field(default=30, ge=0, le=120, description="Speed limit in mph")
+    # Weather features
+    Temperature_F: float = Field(..., alias="Temperature(F)", description="Temperature in Fahrenheit")
+    Humidity: float = Field(..., ge=0, le=100, alias="Humidity(%)", description="Humidity percentage")
+    Pressure: float = Field(..., alias="Pressure(in)", description="Air pressure in inches")
+    Visibility: float = Field(..., ge=0, alias="Visibility(mi)", description="Visibility in miles")
+    Wind_Speed: float = Field(..., ge=0, alias="Wind_Speed(mph)", description="Wind speed in mph")
+    Precipitation: float = Field(..., ge=0, alias="Precipitation(in)", description="Precipitation in inches")
+    Weather_Condition: str = Field(..., description="Weather description (e.g., 'Fair', 'Heavy Rain', 'Fog')")
     
-    # Junction
-    Junction_Detail: Optional[str] = Field(default="Not at junction", description="Junction detail")
-    Junction_Control: Optional[str] = Field(default="Not at junction", description="Junction control")
+    # Road features (boolean: 0 or 1)
+    Crossing: int = Field(..., ge=0, le=1, description="Pedestrian crossing present (0 or 1)")
+    Junction: int = Field(..., ge=0, le=1, description="Junction present (0 or 1)")
+    Traffic_Signal: int = Field(..., ge=0, le=1, description="Traffic signal present (0 or 1)")
+    Stop: int = Field(..., ge=0, le=1, description="Stop sign present (0 or 1)")
     
-    # Area type
-    Urban_or_Rural_Area: Optional[str] = Field(default="Urban", description="Urban or rural area")
+    # Temporal features
+    Hour: int = Field(..., ge=0, le=23, description="Hour of day (0-23)")
+    Day_of_Week: int = Field(..., ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)")
+    Month: int = Field(..., ge=1, le=12, description="Month (1-12)")
+    Year: int = Field(..., ge=2016, le=2030, description="Year")
     
-    # Vehicles and casualties
-    Number_of_Vehicles: Optional[int] = Field(default=1, ge=0, description="Number of vehicles involved")
-    Number_of_Casualties: Optional[int] = Field(default=1, ge=0, description="Number of casualties")
-    
-    # Additional features
-    Pedestrian_Crossing: Optional[str] = Field(default="No physical crossing", description="Pedestrian crossing type")
-    Carriageway_Hazards: Optional[str] = Field(default="None", description="Carriageway hazards")
+    # Location features
+    City: str = Field(..., description="City name")
+    State: str = Field(..., description="State code (e.g., 'CA', 'NY')")
+    Street: str = Field(..., description="Street name")
+    Sunrise_Sunset: str = Field(..., description="Day or Night")
     
     class Config:
+        populate_by_name = True
         json_schema_extra = {
             "example": {
-                "Latitude": 51.5074,
-                "Longitude": -0.1278,
-                "Time": "18:30",
-                "Day_of_Week": "Friday",
-                "Weather_Conditions": "Raining",
-                "Light_Conditions": "Darkness - lights lit",
-                "Road_Type": "Single carriageway",
-                "Road_Surface_Conditions": "Wet or damp",
-                "Speed_limit": 30,
-                "Junction_Detail": "T or staggered junction",
-                "Junction_Control": "Give way or uncontrolled",
-                "Urban_or_Rural_Area": "Urban",
-                "Number_of_Vehicles": 2,
-                "Number_of_Casualties": 1,
-                "Pedestrian_Crossing": "Zebra crossing",
-                "Carriageway_Hazards": "None"
+                "Start_Lat": 39.7392,
+                "Start_Lng": -104.9903,
+                "Distance(mi)": 0.5,
+                "Temperature(F)": 60.0,
+                "Humidity(%)": 65.0,
+                "Pressure(in)": 29.92,
+                "Visibility(mi)": 10.0,
+                "Wind_Speed(mph)": 5.0,
+                "Precipitation(in)": 0.0,
+                "Weather_Condition": "Fair",
+                "Crossing": 0,
+                "Junction": 0,
+                "Traffic_Signal": 1,
+                "Stop": 0,
+                "Hour": 12,
+                "Day_of_Week": 2,
+                "Month": 6,
+                "Year": 2024,
+                "City": "Denver",
+                "State": "CO",
+                "Street": "Main St",
+                "Sunrise_Sunset": "Day"
             }
         }
 
 
 class PredictionResponse(BaseModel):
-    """Response model for prediction"""
-    risk_level: str
-    severity_score: float
-    confidence: float
+    """Response model for binary prediction"""
+    success: bool
+    prediction: str  # "High Risk" or "Low Risk"
+    label: int  # 1 or 0
+    probability: float  # Probability of predicted class
+    raw_proba: List[float]  # [prob_low, prob_high]
     risk_factors: List[str]
     recommendations: List[str]
-    prediction_probabilities: Dict[str, float]
 
 
 class BatchPredictionInput(BaseModel):
@@ -92,18 +105,19 @@ class BatchPredictionResponse(BaseModel):
 @router.post("/predict", response_model=PredictionResponse)
 async def predict_risk(input_data: PredictionInput):
     """
-    Predict pedestrian accident risk level based on input parameters
+    Predict accident risk level (Binary: High Risk / Low Risk)
     
     Returns:
-        - risk_level: High, Medium, or Low
-        - severity_score: Numerical severity (1-3)
-        - confidence: Model confidence (0-1)
+        - prediction: "High Risk" or "Low Risk"
+        - label: 1 (High Risk) or 0 (Low Risk)
+        - probability: Confidence of prediction
+        - raw_proba: [prob_low, prob_high]
         - risk_factors: List of identified risk factors
         - recommendations: Safety recommendations
     """
     try:
         # Convert Pydantic model to dict
-        input_dict = input_data.model_dump()
+        input_dict = input_data.model_dump(by_alias=True)
         
         # Initialize preprocessor
         preprocessor = FeaturePreprocessor(predictor.feature_names)
@@ -113,15 +127,26 @@ async def predict_risk(input_data: PredictionInput):
         if not is_valid:
             raise HTTPException(status_code=400, detail={"errors": errors})
         
-        # Preprocess features
+        # Preprocess features (creates 43 features)
         features_df = preprocessor.preprocess(input_dict)
         
-        # Make prediction
+        # Make prediction (scaling happens inside predictor)
         result = predictor.predict(features_df)
         
-        logger.info(f"Prediction made: {result['risk_level']} (confidence: {result['confidence']})")
+        # Transform response
+        response = {
+            "success": True,
+            "prediction": result["prediction"],
+            "label": result["label"],
+            "probability": result["probability"],
+            "raw_proba": result["raw_proba"],
+            "risk_factors": result.get("risk_factors", []),
+            "recommendations": result.get("recommendations", [])
+        }
         
-        return result
+        logger.info(f"Prediction: {response['prediction']} (prob: {response['probability']:.3f})")
+        
+        return response
         
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")
@@ -145,7 +170,7 @@ async def batch_predict_risk(batch_input: BatchPredictionInput):
         preprocessor = FeaturePreprocessor(predictor.feature_names)
         
         for input_data in batch_input.predictions:
-            input_dict = input_data.model_dump()
+            input_dict = input_data.model_dump(by_alias=True)
             
             # Validate input
             is_valid, errors = preprocessor.validate_input(input_dict)
@@ -155,7 +180,18 @@ async def batch_predict_risk(batch_input: BatchPredictionInput):
             # Preprocess and predict
             features_df = preprocessor.preprocess(input_dict)
             result = predictor.predict(features_df)
-            results.append(result)
+            
+            # Transform response
+            response = {
+                "success": True,
+                "prediction": result["prediction"],
+                "label": result["label"],
+                "probability": result["probability"],
+                "raw_proba": result["raw_proba"],
+                "risk_factors": result.get("risk_factors", []),
+                "recommendations": result.get("recommendations", [])
+            }
+            results.append(response)
         
         logger.info(f"Batch prediction completed: {len(results)} predictions")
         
@@ -208,8 +244,7 @@ async def get_model_metrics():
     Returns:
         - accuracy: Model accuracy
         - f1_score: F1 score
-        - precision: Precision score
-        - recall: Recall score
+        - roc_auc: ROC-AUC score
         - Additional metrics from training
     """
     try:
@@ -217,8 +252,10 @@ async def get_model_metrics():
         
         return {
             "metrics": metrics,
-            "model_name": "SafeStride XGBoost Optimized",
-            "model_version": "1.0.0"
+            "model_name": "US Accidents XGBoost Binary Classifier",
+            "model_version": "20251118_162845",
+            "dataset": "US Accidents (2016-2023)",
+            "classes": ["Low Risk", "High Risk"]
         }
         
     except Exception as e:
@@ -232,9 +269,14 @@ async def get_feature_template():
     Get template of expected input features
     
     Returns:
-        Template dictionary with all expected features and default values
+        Template dictionary with all required features and default values
     """
+    from utils.preprocessing import get_example_requests
+    
     return {
-        "template": get_default_features(),
-        "description": "Use this template to understand the expected input format"
+        "required_features": get_default_features(),
+        "description": "US Accidents binary model - predicts High Risk or Low Risk",
+        "examples": get_example_requests(),
+        "feature_count": 43,
+        "input_features": 22
     }

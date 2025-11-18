@@ -90,6 +90,16 @@ function App() {
 
     try {
       const result = await apiService.predict(formData);
+      
+      // Add to history immediately with the form data
+      const historyEntry = {
+        ...result,
+        formData: formData,
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+      };
+      setHistory((prev) => [historyEntry, ...prev].slice(0, 20)); // Keep last 20
+      
       setPredictionResult(result);
       setActiveTab('result');
       
@@ -112,15 +122,6 @@ function App() {
     setPredictionResult(null);
     setActiveTab('home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const addToHistory = (result) => {
-    const newEntry = {
-      ...result,
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
-    };
-    setHistory((prev) => [newEntry, ...prev].slice(0, 10)); // Keep last 10
   };
 
   const clearHistory = () => {
@@ -262,7 +263,6 @@ function App() {
               <EnhancedResultDisplay
                 result={predictionResult}
                 onNewPrediction={handleNewPrediction}
-                addToHistory={addToHistory}
               />
             </motion.div>
           )}

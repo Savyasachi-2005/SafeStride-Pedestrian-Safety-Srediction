@@ -1,76 +1,65 @@
+"""
+SafeStride Feature Preprocessing Module - US Accidents Model
+
+This module handles the feature engineering pipeline for the US Accidents binary model.
+It takes raw input features and generates the 43 features needed for prediction.
+
+REQUIRED INPUT FEATURES:
+Geographic:
+- Start_Lat (float): Latitude
+- Start_Lng (float): Longitude
+- Distance(mi) (float): Length of the road extent affected by the accident
+
+Weather:
+- Temperature(F) (float): Temperature in Fahrenheit
+- Humidity(%) (float): Humidity percentage
+- Pressure(in) (float): Air pressure in inches
+- Visibility(mi) (float): Visibility in miles
+- Wind_Speed(mph) (float): Wind speed in mph
+- Precipitation(in) (float): Precipitation amount in inches
+- Weather_Condition (str): Weather description
+
+Road Features:
+- Crossing (bool/int): 0 or 1
+- Junction (bool/int): 0 or 1
+- Traffic_Signal (bool/int): 0 or 1
+- Stop (bool/int): 0 or 1
+
+Temporal:
+- Hour (int): 0-23
+- Day_of_Week (int): 0-6
+- Month (int): 1-12
+- Year (int): e.g., 2024
+
+Additional:
+- City (str): City name
+- State (str): State code
+- Street (str): Street name
+- Sunrise_Sunset (str): "Day" or "Night"
+"""
+
 import pandas as pd
 import numpy as np
-from datetime import datetime
 from typing import Dict, List, Any
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-# Encoding mappings based on UK STATS19 data format
-LIGHT_CONDITIONS_MAP = {
-    "Daylight": 1.0,
-    "Darkness - lights lit": 4.0,
-    "Darkness - lights unlit": 5.0,
-    "Darkness - no lighting": 6.0,
-    "Darkness - lighting unknown": 7.0,
-}
-
-WEATHER_CONDITIONS_MAP = {
-    "Fine no high winds": 1.0,
-    "Fine": 1.0,
-    "Raining no high winds": 2.0,
-    "Raining": 2.0,
-    "Snowing no high winds": 3.0,
-    "Snowing": 3.0,
-    "Fine + high winds": 4.0,
-    "Raining + high winds": 5.0,
-    "Snowing + high winds": 6.0,
-    "Fog or mist": 7.0,
-    "Other": 8.0,
-    "Unknown": 9.0,
-}
-
-ROAD_SURFACE_CONDITIONS_MAP = {
-    "Dry": 1.0,
-    "Wet or damp": 2.0,
-    "Snow": 3.0,
-    "Frost or ice": 4.0,
-    "Flood over 3cm deep": 5.0,
-    "Flood over 3cm. deep": 5.0,
-}
-
-ROAD_TYPE_MAP = {
-    "Roundabout": 2.0,
-    "One way street": 3.0,
-    "Dual carriageway": 6.0,
-    "Single carriageway": 7.0,
-    "Slip road": 9.0,
-}
-
-URBAN_RURAL_MAP = {
-    "Urban": 1.0,
-    "Rural": 2.0,
-    "Unallocated": 3.0,
-}
-
-DAY_OF_WEEK_MAP = {
-    "Sunday": 1,
-    "Monday": 2,
-    "Tuesday": 3,
-    "Wednesday": 4,
-    "Thursday": 5,
-    "Friday": 6,
-    "Saturday": 7,
-}
-
-
 class FeaturePreprocessor:
     """
-    Preprocesses input features to match the format expected by the trained model
+    Preprocesses input features to match the format expected by the US Accidents model
+    
+    Creates 43 features matching the trained model's expectations
     """
     
     def __init__(self, feature_names: List[str]):
+        """
+        Initialize preprocessor with expected feature names from training
+        
+        Args:
+            feature_names: List of 43 feature names in the exact order used during training
+        """
         self.feature_names = feature_names
     
     def preprocess(self, input_data: Dict[str, Any]) -> pd.DataFrame:
@@ -81,182 +70,170 @@ class FeaturePreprocessor:
             input_data: Dictionary with raw input features
             
         Returns:
-            DataFrame with preprocessed features matching training format
+            DataFrame with 43 features matching training format
         """
         try:
-            # Create a dictionary to store processed features
-            processed = {}
+            logger.info("Starting US Accidents feature preprocessing...")
             
-            # 1. Handle Time/Hour
-            if 'Time' in input_data:
-                time_val = input_data['Time']
-                if isinstance(time_val, str) and ':' in time_val:
-                    hour = int(time_val.split(':')[0])
-                else:
-                    hour = int(time_val) if isinstance(time_val, (int, float)) else 12
-                processed['Hour'] = hour
-                processed['Is_Night'] = 1 if (hour < 6 or hour >= 20) else 0
-                processed['Is_Rush_Hour'] = 1 if (7 <= hour <= 9 or 16 <= hour <= 18) else 0
+            # Create initial dataframe
+            df = pd.DataFrame([input_data])
+            
+            # ===== NUMERIC FEATURES (9) =====
+            numeric_features = [
+                'Start_Lat', 'Start_Lng', 'Distance(mi)',
+                'Temperature(F)', 'Humidity(%)', 'Pressure(in)',
+                'Visibility(mi)', 'Wind_Speed(mph)', 'Precipitation(in)'
+            ]
+            
+            for feat in numeric_features:
+                if feat not in df.columns:
+                    df[feat] = 0.0
+                df[feat] = pd.to_numeric(df[feat], errors='coerce').fillna(0.0)
+            
+            # ===== BOOLEAN FEATURES (4) =====
+            boolean_features = ['Crossing', 'Junction', 'Traffic_Signal', 'Stop']
+            for feat in boolean_features:
+                if feat not in df.columns:
+                    df[feat] = 0
+                df[feat] = df[feat].astype(int)
+            
+            # ===== TEMPORAL FEATURES (7) =====
+            temporal_features = {
+                'Hour': (0, 23),
+                'Day_of_Week': (0, 6),
+                'Month': (1, 12),
+                'Year': (2016, 2030)
+            }
+            
+            for feat, (min_val, max_val) in temporal_features.items():
+                if feat not in df.columns:
+                    df[feat] = min_val
+                df[feat] = pd.to_numeric(df[feat], errors='coerce').fillna(min_val).astype(int)
+                df[feat] = df[feat].clip(min_val, max_val)
+            
+            # Derived temporal features
+            df['Is_Weekend'] = (df['Day_of_Week'] >= 5).astype(int)
+            df['Is_Rush_Hour'] = ((df['Hour'] >= 7) & (df['Hour'] <= 9) | 
+                                   (df['Hour'] >= 17) & (df['Hour'] <= 19)).astype(int)
+            df['Is_Night'] = ((df['Hour'] >= 22) | (df['Hour'] <= 6)).astype(int)
+            
+            # ===== LOCATION FREQUENCY FEATURES (2) =====
+            # For real-time prediction, we use average values since we don't have training frequency data
+            df['City_Frequency'] = 0.5  # Default mid-range frequency
+            df['State_Frequency'] = 0.5  # Default mid-range frequency
+            
+            # ===== STREET TYPE FEATURES (2) =====
+            street = str(input_data.get('Street', '')).upper()
+            df['Is_Highway'] = int(any(x in street for x in ['I-', 'US-', 'HWY', 'HIGHWAY', 'INTERSTATE']))
+            df['Is_Main_Street'] = int(any(x in street for x in ['MAIN', 'AVENUE', 'AVE', 'BOULEVARD', 'BLVD']))
+            
+            # ===== INTERACTION FEATURES (2) =====
+            df['Night_Low_Visibility'] = ((df['Is_Night'] == 1) & (df['Visibility(mi)'] < 5)).astype(int)
+            df['Freezing_Rain'] = ((df['Temperature(F)'] <= 32) & (df['Precipitation(in)'] > 0)).astype(int)
+            
+            # ===== WEATHER CONDITION ONE-HOT ENCODING (15) =====
+            weather_condition = input_data.get('Weather_Condition', 'Other')
+            
+            # Map weather conditions to categories
+            weather_categories = [
+                'Fair', 'Fog', 'Haze', 'Heavy Rain', 'Light Drizzle', 
+                'Light Rain', 'Light Snow', 'Light Thunderstorms and Rain',
+                'Mostly Cloudy', 'Other', 'Overcast', 'Partly Cloudy',
+                'Rain', 'Scattered Clouds', 'Thunderstorm'
+            ]
+            
+            # Initialize all weather columns to 0
+            for cat in weather_categories:
+                df[f'Weather_Condition_{cat}'] = 0
+            
+            # Set the matching category to 1
+            best_match = self._match_weather_condition(weather_condition, weather_categories)
+            if best_match:
+                df[f'Weather_Condition_{best_match}'] = 1
             else:
-                processed['Hour'] = 12
-                processed['Is_Night'] = 0
-                processed['Is_Rush_Hour'] = 0
+                df['Weather_Condition_Other'] = 1
             
-            # 2. Handle Day of Week
-            day = input_data.get('Day_of_Week', 'Monday')
-            processed['Day_of_Week'] = DAY_OF_WEEK_MAP.get(day, 2)
-            processed['Is_Weekend'] = 1 if day in ['Saturday', 'Sunday'] else 0
+            # ===== SUNRISE_SUNSET ONE-HOT ENCODING (2) =====
+            sunrise_sunset = input_data.get('Sunrise_Sunset', 'Day')
+            df['Sunrise_Sunset_Night'] = 1 if 'Night' in str(sunrise_sunset) else 0
+            df['Sunrise_Sunset_Unknown'] = 1 if 'Unknown' in str(sunrise_sunset) else 0
             
-            # 3. Handle Month (extract from current date if not provided)
-            processed['Month'] = input_data.get('Month', 6)  # Default to June
+            # ===== FEATURE ALIGNMENT (43 features total) =====
+            logger.info("Aligning features with training data...")
             
-            # 4. Handle Location
-            processed['latitude'] = float(input_data.get('Latitude', 51.5074))
-            processed['longitude'] = float(input_data.get('Longitude', -0.1278))
-            
-            # 5. Handle Light Conditions (one-hot encoded)
-            light = input_data.get('Light_Conditions', 'Daylight')
-            light_code = LIGHT_CONDITIONS_MAP.get(light, 1.0)
-            for code in [4.0, 5.0, 6.0, 7.0]:
-                processed[f'Light_Conditions_{code}'] = 1 if light_code == code else 0
-            
-            # 6. Handle Weather Conditions (one-hot encoded)
-            weather = input_data.get('Weather_Conditions', 'Fine')
-            weather_code = WEATHER_CONDITIONS_MAP.get(weather, 1.0)
-            for code in [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]:
-                processed[f'Weather_Conditions_{code}'] = 1 if weather_code == code else 0
-            
-            # 7. Handle Road Surface Conditions (one-hot encoded)
-            road_surface = input_data.get('Road_Surface_Conditions', 'Dry')
-            road_surface_code = ROAD_SURFACE_CONDITIONS_MAP.get(road_surface, 1.0)
-            for code in [1.0, 2.0, 3.0, 4.0, 5.0]:
-                processed[f'Road_Surface_Conditions_{code}'] = 1 if road_surface_code == code else 0
-            
-            # 8. Handle Road Type (one-hot encoded)
-            road_type = input_data.get('Road_Type', 'Single carriageway')
-            road_type_code = ROAD_TYPE_MAP.get(road_type, 7.0)
-            for code in [2.0, 3.0, 6.0, 7.0, 9.0]:
-                processed[f'Road_Type_{code}'] = 1 if road_type_code == code else 0
-            
-            # 9. Handle Urban/Rural Area (one-hot encoded)
-            urban_rural = input_data.get('Urban_or_Rural_Area', 'Urban')
-            urban_rural_code = URBAN_RURAL_MAP.get(urban_rural, 1.0)
-            processed['Urban_or_Rural_Area_2.0'] = 1 if urban_rural_code == 2.0 else 0
-            processed['Urban_or_Rural_Area_3.0'] = 1 if urban_rural_code == 3.0 else 0
-            
-            # 10. Handle Pedestrian Crossing
-            ped_crossing = input_data.get('Pedestrian_Crossing', 'No physical crossing')
-            processed['Pedestrian_Crossing-Physical_Facilities'] = 0 if 'No' in ped_crossing else 1
-            processed['Pedestrian_Crossing-Human_Control'] = 1 if 'control' in ped_crossing.lower() else 0
-            
-            # 11. Handle Junction Details
-            junction_detail = input_data.get('Junction_Detail', 'Not at junction')
-            processed['Junction_Detail'] = 0 if 'Not' in junction_detail else 1
-            
-            junction_control = input_data.get('Junction_Control', 'Not at junction')
-            processed['Junction_Control'] = 0 if 'Not' in junction_control else 1
-            
-            # 12. Simple numeric fields
-            processed['Speed_limit'] = int(input_data.get('Speed_limit', 30))
-            processed['Number_of_Vehicles'] = int(input_data.get('Number_of_Vehicles', 1))
-            processed['Number_of_Casualties'] = int(input_data.get('Number_of_Casualties', 1))
-            
-            # 13. Handle Carriageway Hazards
-            hazards = input_data.get('Carriageway_Hazards', 'None')
-            processed['Carriageway_Hazards'] = 0 if hazards == 'None' else 1
-            
-            # 14. Additional fields with defaults
-            processed['Special_Conditions_at_Site'] = 0
-            processed['Did_Police_Officer_Attend_Scene_of_Accident'] = 0
-            processed['Police_Force'] = 1
-            processed['Local_Authority_(District)'] = 1
-            processed['1st_Road_Class'] = 3
-            processed['1st_Road_Number'] = 0
-            processed['2nd_Road_Class'] = 0
-            processed['2nd_Road_Number'] = 0
-            
-            # 15. Handle LSOA (Local Super Output Area) - set all to 0, one to "Other"
-            lsoa_features = [f for f in self.feature_names if f.startswith('LSOA_of_Accident_Location_')]
-            for lsoa in lsoa_features:
-                if lsoa == 'LSOA_of_Accident_Location_Other':
-                    processed[lsoa] = 1
-                else:
-                    processed[lsoa] = 0
-            
-            # 16. Handle Local Authority (Highway) - set all to 0, one to "Other"
-            la_features = [f for f in self.feature_names if f.startswith('Local_Authority_(Highway)_')]
-            for la in la_features:
-                if la == 'Local_Authority_(Highway)_Other':
-                    processed[la] = 1
-                else:
-                    processed[la] = 0
-            
-            # Convert to DataFrame
-            df = pd.DataFrame([processed])
-            
-            # Ensure all expected features are present
+            # Add any missing columns with 0 values
             for feature in self.feature_names:
                 if feature not in df.columns:
                     df[feature] = 0
+                    logger.debug(f"Added missing feature: {feature}")
             
-            # Select only the features used in training (in correct order)
-            df = df[self.feature_names]
+            # Remove extra columns not in training
+            extra_cols = [col for col in df.columns if col not in self.feature_names]
+            if extra_cols:
+                logger.debug(f"Removing extra columns: {extra_cols}")
+                df = df.drop(columns=extra_cols, errors='ignore')
             
-            # Fill any missing values with 0
-            df = df.fillna(0)
+            # Reorder columns to match training feature order
+            df_final = df[self.feature_names]
             
-            # Replace infinities with 0
-            df = df.replace([np.inf, -np.inf], 0)
+            # ===== FINAL CLEANING =====
+            df_final = df_final.fillna(0)
+            df_final = df_final.replace([np.inf, -np.inf], 0)
+            df_final = df_final.astype(float)
             
-            # Convert to appropriate numeric types
-            df = df.astype(float)
+            logger.info(f"✓ Preprocessing complete. Shape: {df_final.shape}")
+            logger.info(f"  Features: {len(df_final.columns)} (expected: 43)")
             
-            logger.info(f"Preprocessed features shape: {df.shape}")
-            
-            return df
+            return df_final
             
         except Exception as e:
-            logger.error(f"Preprocessing error: {str(e)}")
+            logger.error(f"❌ Preprocessing error: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             raise ValueError(f"Error preprocessing input data: {str(e)}")
     
-    def _convert_time_to_minutes(self, time_value: Any) -> int:
-        """Convert time to minutes from midnight"""
-        if isinstance(time_value, (int, float)):
-            # If already in minutes or hours
-            if time_value > 24:
-                return int(time_value)  # Already in minutes
-            else:
-                return int(time_value * 60)  # Convert hours to minutes
+    def _match_weather_condition(self, condition: str, categories: List[str]) -> str:
+        """Match weather condition to one of the predefined categories"""
+        condition_lower = str(condition).lower()
         
-        elif isinstance(time_value, str):
-            try:
-                # Try parsing HH:MM format
-                if ':' in time_value:
-                    time_obj = datetime.strptime(time_value, '%H:%M')
-                    return time_obj.hour * 60 + time_obj.minute
-                else:
-                    # Assume it's just hours
-                    return int(float(time_value) * 60)
-            except:
-                logger.warning(f"Could not parse time: {time_value}, using 0")
-                return 0
+        # Direct matches
+        for cat in categories:
+            if cat.lower() in condition_lower or condition_lower in cat.lower():
+                return cat
         
-        return 0
+        # Partial matches
+        if 'clear' in condition_lower or 'fair' in condition_lower:
+            return 'Fair'
+        if 'fog' in condition_lower or 'mist' in condition_lower:
+            return 'Fog'
+        if 'haze' in condition_lower:
+            return 'Haze'
+        if 'heavy' in condition_lower and 'rain' in condition_lower:
+            return 'Heavy Rain'
+        if 'drizzle' in condition_lower:
+            return 'Light Drizzle'
+        if 'light' in condition_lower and 'rain' in condition_lower:
+            return 'Light Rain'
+        if 'light' in condition_lower and 'snow' in condition_lower:
+            return 'Light Snow'
+        if 'thunder' in condition_lower and 'light' in condition_lower:
+            return 'Light Thunderstorms and Rain'
+        if 'mostly cloudy' in condition_lower:
+            return 'Mostly Cloudy'
+        if 'overcast' in condition_lower:
+            return 'Overcast'
+        if 'partly' in condition_lower and 'cloud' in condition_lower:
+            return 'Partly Cloudy'
+        if 'rain' in condition_lower and 'heavy' not in condition_lower:
+            return 'Rain'
+        if 'scattered' in condition_lower:
+            return 'Scattered Clouds'
+        if 'thunder' in condition_lower or 'storm' in condition_lower:
+            return 'Thunderstorm'
+        
+        return 'Other'
     
-    def _identify_categorical_columns(self, df: pd.DataFrame) -> List[str]:
-        """Identify categorical columns that need encoding"""
-        categorical_cols = []
-        
-        for col in df.columns:
-            # Check if column contains string values
-            if df[col].dtype == 'object' or df[col].dtype.name == 'category':
-                categorical_cols.append(col)
-        
-        return categorical_cols
-    
-    def validate_input(self, input_data: Dict[str, Any]) -> tuple[bool, List[str]]:
+    def validate_input(self, input_data: Dict[str, Any]) -> tuple:
         """
         Validate input data
         
@@ -265,78 +242,121 @@ class FeaturePreprocessor:
         """
         errors = []
         
-        # Check for required fields (adjust based on your model)
-        required_fields = ['Time', 'Day_of_Week']  # Add your required fields
-        
-        for field in required_fields:
-            if field not in input_data or input_data[field] is None:
-                errors.append(f"Missing required field: {field}")
-        
-        # Validate data types and ranges
-        if 'Speed_limit' in input_data:
-            speed = input_data['Speed_limit']
-            if not isinstance(speed, (int, float)) or speed < 0 or speed > 120:
-                errors.append("Speed limit must be between 0 and 120")
-        
-        if 'Number_of_Vehicles' in input_data:
-            num_vehicles = input_data['Number_of_Vehicles']
-            if not isinstance(num_vehicles, (int, float)) or num_vehicles < 0:
-                errors.append("Number of vehicles must be non-negative")
-        
-        if 'Number_of_Casualties' in input_data:
-            num_casualties = input_data['Number_of_Casualties']
-            if not isinstance(num_casualties, (int, float)) or num_casualties < 0:
-                errors.append("Number of casualties must be non-negative")
-        
-        # Validate latitude/longitude if provided
-        if 'Latitude' in input_data:
-            lat = input_data['Latitude']
+        # Check numeric ranges
+        if 'Start_Lat' in input_data:
+            lat = input_data['Start_Lat']
             if not isinstance(lat, (int, float)) or lat < -90 or lat > 90:
-                errors.append("Latitude must be between -90 and 90")
+                errors.append("Start_Lat must be between -90 and 90")
         
-        if 'Longitude' in input_data:
-            lon = input_data['Longitude']
-            if not isinstance(lon, (int, float)) or lon < -180 or lon > 180:
-                errors.append("Longitude must be between -180 and 180")
+        if 'Start_Lng' in input_data:
+            lng = input_data['Start_Lng']
+            if not isinstance(lng, (int, float)) or lng < -180 or lng > 180:
+                errors.append("Start_Lng must be between -180 and 180")
+        
+        if 'Hour' in input_data:
+            hour = input_data['Hour']
+            if not isinstance(hour, int) or hour < 0 or hour > 23:
+                errors.append("Hour must be between 0 and 23")
         
         return len(errors) == 0, errors
 
 
 def get_default_features() -> Dict[str, Any]:
-    """Return a template of expected input features with default values"""
+    """
+    Return a template of required input features with default values
+    """
     return {
+        # Geographic
+        "Start_Lat": 39.7392,  # Example: Ohio
+        "Start_Lng": -104.9903,  # Example: Colorado
+        "Distance(mi)": 0.5,
+        
+        # Weather
+        "Temperature(F)": 60.0,
+        "Humidity(%)": 65.0,
+        "Pressure(in)": 29.92,
+        "Visibility(mi)": 10.0,
+        "Wind_Speed(mph)": 5.0,
+        "Precipitation(in)": 0.0,
+        "Weather_Condition": "Fair",
+        
+        # Road Features
+        "Crossing": 0,
+        "Junction": 0,
+        "Traffic_Signal": 0,
+        "Stop": 0,
+        
+        # Temporal
+        "Hour": 12,
+        "Day_of_Week": 2,  # Wednesday
+        "Month": 6,
+        "Year": 2024,
+        
         # Location
-        "Latitude": 51.5074,
-        "Longitude": -0.1278,
-        
-        # Time features
-        "Time": "12:00",  # HH:MM format or hour number
-        "Day_of_Week": "Monday",  # Monday-Sunday
-        "Month": 6,  # 1-12
-        
-        # Weather (will be encoded to numeric)
-        "Weather_Conditions": "Fine",  # Fine, Raining, Snowing, Fog or mist, etc.
-        
-        # Light (will be encoded to numeric)
-        "Light_Conditions": "Daylight",  # Daylight, Darkness - lights lit, etc.
-        
-        # Road (will be encoded to numeric)
-        "Road_Type": "Single carriageway",  # Single carriageway, Dual carriageway, Roundabout, etc.
-        "Road_Surface_Conditions": "Dry",  # Dry, Wet or damp, Snow, Frost or ice, etc.
-        "Speed_limit": 30,
-        
-        # Junction
-        "Junction_Detail": "Not at junction",  # Not at junction, Roundabout, T junction, etc.
-        "Junction_Control": "Not at junction",  # Not at junction, Give way, Traffic signal, etc.
-        
-        # Area (will be encoded to numeric)
-        "Urban_or_Rural_Area": "Urban",  # Urban, Rural
-        
-        # Vehicles and casualties
-        "Number_of_Vehicles": 1,
-        "Number_of_Casualties": 1,
-        
-        # Additional features
-        "Pedestrian_Crossing": "No physical crossing",  # Zebra crossing, Pelican crossing, etc.
-        "Carriageway_Hazards": "None",  # None, or specific hazard
+        "City": "Denver",
+        "State": "CO",
+        "Street": "Main St",
+        "Sunrise_Sunset": "Day"
     }
+
+
+def get_example_requests() -> List[Dict[str, Any]]:
+    """
+    Return example request payloads for different risk scenarios
+    """
+    return [
+        {
+            "name": "Low Risk - Clear Day",
+            "data": {
+                "Start_Lat": 39.7392,
+                "Start_Lng": -104.9903,
+                "Distance(mi)": 0.2,
+                "Temperature(F)": 72.0,
+                "Humidity(%)": 45.0,
+                "Pressure(in)": 30.0,
+                "Visibility(mi)": 10.0,
+                "Wind_Speed(mph)": 5.0,
+                "Precipitation(in)": 0.0,
+                "Weather_Condition": "Fair",
+                "Crossing": 1,
+                "Junction": 0,
+                "Traffic_Signal": 1,
+                "Stop": 0,
+                "Hour": 14,
+                "Day_of_Week": 2,
+                "Month": 6,
+                "Year": 2024,
+                "City": "Denver",
+                "State": "CO",
+                "Street": "Main St",
+                "Sunrise_Sunset": "Day"
+            }
+        },
+        {
+            "name": "High Risk - Highway Night",
+            "data": {
+                "Start_Lat": 34.0522,
+                "Start_Lng": -118.2437,
+                "Distance(mi)": 2.5,
+                "Temperature(F)": 55.0,
+                "Humidity(%)": 85.0,
+                "Pressure(in)": 29.8,
+                "Visibility(mi)": 3.0,
+                "Wind_Speed(mph)": 15.0,
+                "Precipitation(in)": 0.5,
+                "Weather_Condition": "Heavy Rain",
+                "Crossing": 0,
+                "Junction": 1,
+                "Traffic_Signal": 1,
+                "Stop": 1,
+                "Hour": 23,
+                "Day_of_Week": 5,
+                "Month": 12,
+                "Year": 2024,
+                "City": "Los Angeles",
+                "State": "CA",
+                "Street": "I-405",
+                "Sunrise_Sunset": "Night"
+            }
+        }
+    ]
