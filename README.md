@@ -317,29 +317,6 @@ Or use the interactive API docs at `http://localhost:8000/docs`
    - `VITE_API_URL`: Your deployed backend URL
 4. Deploy!
 
-### Docker Deployment
-
-**Backend Dockerfile:**
-```dockerfile
-FROM python:3.10-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-**Frontend Dockerfile:**
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-CMD ["npm", "run", "preview"]
-```
-
 ## 🔧 Configuration
 
 ### Backend Configuration
@@ -428,7 +405,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 👥 Authors
 
-Your Name - SafeStride Development Team
+- SafeStride Development Team
 
 ## 🙏 Acknowledgments
 
@@ -444,16 +421,9 @@ For support:
 - Review troubleshooting section
 - Open an issue on GitHub
 
-## 🗺️ Roadmap
 
-- [ ] Add map interface for location selection
-- [ ] Implement user authentication
-- [ ] Add batch prediction from CSV
-- [ ] Create mobile app (React Native)
-- [ ] Add more visualization charts
-- [ ] Implement A/B testing for models
-- [ ] Add multilingual support
 
 ---
 
 Built with ❤️ using FastAPI, React, and XGBoost
+
