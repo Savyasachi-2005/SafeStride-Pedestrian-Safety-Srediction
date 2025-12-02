@@ -248,14 +248,27 @@ async def get_model_metrics():
         - Additional metrics from training
     """
     try:
-        metrics = predictor.get_metrics()
+        metadata = predictor.get_metrics()
+        
+        # Extract performance metrics and flatten structure for frontend
+        performance = metadata.get("performance", {})
         
         return {
-            "metrics": metrics,
+            "metrics": {
+                "test_accuracy": performance.get("accuracy", 0.0),
+                "f1_score": performance.get("f1_score", 0.0),
+                "roc_auc": performance.get("roc_auc", 0.0),
+                "sensitivity": performance.get("sensitivity", 0.0),
+                "specificity": performance.get("specificity", 0.0),
+                "precision": performance.get("precision", 0.0),
+                "n_features": metadata.get("n_features", 43),
+                "n_samples_train": metadata.get("n_samples_train", 400000),
+                "n_samples_test": metadata.get("n_samples_test", 100000)
+            },
             "model_name": "US Accidents XGBoost Binary Classifier",
-            "model_version": "20251118_162845",
-            "dataset": "US Accidents (2016-2023)",
-            "classes": ["Low Risk", "High Risk"]
+            "model_version": metadata.get("training_date", "20251118_162845"),
+            "dataset": metadata.get("dataset", "US Accidents (2016-2023)"),
+            "classes": list(metadata.get("class_mapping", {}).values())
         }
         
     except Exception as e:

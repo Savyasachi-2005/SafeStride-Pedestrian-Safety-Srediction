@@ -120,7 +120,7 @@ function App() {
 
   const handleNewPrediction = () => {
     setPredictionResult(null);
-    setActiveTab('home');
+    setActiveTab('predict');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -153,12 +153,12 @@ function App() {
     switch (action) {
       case 'home':
         setPredictionResult(null);
-        setActiveTab('home');
+        setActiveTab('predict');
         window.scrollTo({ top: 0, behavior: 'smooth' });
         break;
       case 'predict':
         setPredictionResult(null);
-        setActiveTab('home');
+        setActiveTab('predict');
         setTimeout(() => {
           document.getElementById('prediction-form')?.scrollIntoView({ 
             behavior: 'smooth',
@@ -210,10 +210,49 @@ function App() {
         )}
       </AnimatePresence>
 
+      {/* Tab Navigation */}
+      <motion.div
+        className="sticky top-20 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-b border-gray-200 dark:border-gray-700 shadow-sm"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <div className="container mx-auto px-4">
+          <div className="flex overflow-x-auto scrollbar-hide">
+            {tabs.map((tab) => (
+              <motion.button
+                key={tab.id}
+                onClick={() => !tab.disabled && setActiveTab(tab.id)}
+                disabled={tab.disabled}
+                className={`flex items-center gap-2 px-6 py-4 font-semibold whitespace-nowrap transition-all relative ${
+                  activeTab === tab.id
+                    ? 'text-brand-blue dark:text-blue-400'
+                    : tab.disabled
+                    ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-brand-blue dark:hover:text-blue-400'
+                }`}
+                whileHover={!tab.disabled ? { y: -2 } : {}}
+                whileTap={!tab.disabled ? { scale: 0.95 } : {}}
+              >
+                <tab.icon className="w-5 h-5" />
+                {tab.name}
+                {activeTab === tab.id && (
+                  <motion.div
+                    layoutId="activeTab"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-blue"
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+
       <main>
 
         {/* Hero Section */}
-        {activeTab === 'home' && !predictionResult && (
+        {activeTab === 'predict' && !predictionResult && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -224,7 +263,7 @@ function App() {
         )}
 
         {/* Prediction Form Section */}
-        {activeTab === 'home' && !predictionResult && (
+        {activeTab === 'predict' && !predictionResult && (
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -264,6 +303,26 @@ function App() {
                 result={predictionResult}
                 onNewPrediction={handleNewPrediction}
               />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Metrics Section */}
+        <AnimatePresence>
+          {activeTab === 'metrics' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="container mx-auto px-4 py-12"
+            >
+              {modelMetrics ? (
+                <MetricsCard metrics={modelMetrics} />
+              ) : (
+                <div className="card text-center py-12">
+                  <LoadingSpinner message="Loading model metrics..." />
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

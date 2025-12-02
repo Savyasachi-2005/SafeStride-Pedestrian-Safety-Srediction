@@ -96,12 +96,16 @@ const PredictionHistory = ({ history, clearHistory, onCompare }) => {
   };
 
   const exportToCSV = () => {
-    const headers = ['Timestamp', 'Risk Level', 'Severity Score', 'Confidence'];
+    const headers = ['Timestamp', 'Risk Level', 'Risk Probability', 'Location'];
     const rows = filteredHistory.map((entry) => [
-      entry.timestamp,
+      entry.timestamp || new Date(entry.id).toISOString(),
       entry.risk_level,
-      entry.severity_score,
-      (entry.confidence * 100).toFixed(2) + '%',
+      entry.probabilities && entry.probabilities[entry.risk_level]
+        ? (entry.probabilities[entry.risk_level] * 100).toFixed(2) + '%'
+        : entry.severity_score
+        ? (entry.severity_score * 100).toFixed(2) + '%'
+        : 'N/A',
+      entry.formData ? `${entry.formData.city || 'Unknown'}, ${entry.formData.state || 'Unknown'}` : 'Unknown',
     ]);
 
     const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
@@ -313,10 +317,14 @@ const PredictionHistory = ({ history, clearHistory, onCompare }) => {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
                           <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                            Severity Score
+                            Risk Probability
                           </p>
                           <p className="text-lg font-bold text-gray-800 dark:text-gray-100">
-                            {(entry.severity_score * 100).toFixed(1)}%
+                            {entry.probabilities && entry.probabilities[entry.risk_level] 
+                              ? (entry.probabilities[entry.risk_level] * 100).toFixed(1)
+                              : entry.severity_score 
+                              ? (entry.severity_score * 100).toFixed(1)
+                              : 'N/A'}%
                           </p>
                         </div>
                         <div>
@@ -324,18 +332,34 @@ const PredictionHistory = ({ history, clearHistory, onCompare }) => {
                             Confidence
                           </p>
                           <p className="text-lg font-bold text-gray-800 dark:text-gray-100">
-                            {(entry.confidence * 100).toFixed(1)}%
+                            {entry.probabilities && entry.probabilities[entry.risk_level]
+                              ? (entry.probabilities[entry.risk_level] * 100).toFixed(1)
+                              : entry.confidence
+                              ? (entry.confidence * 100).toFixed(1)
+                              : 'N/A'}%
                           </p>
                         </div>
-                        {entry.risk_factors && (
+                        {entry.risk_factors && Object.keys(entry.risk_factors).length > 0 && (
                           <div className="col-span-2">
                             <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
                               Top Risk Factors
                             </p>
                             <p className="text-sm text-gray-700 dark:text-gray-300">
-                              {Object.keys(entry.risk_factors)
+                              {Object.entries(entry.risk_factors)
+                                .sort(([, a], [, b]) => b - a)
                                 .slice(0, 2)
+                                .map(([key]) => key.replace(/_/g, ' '))
                                 .join(', ')}
+                            </p>
+                          </div>
+                        )}
+                        {entry.formData && (
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                              Location
+                            </p>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                              {entry.formData.city || 'Unknown'}, {entry.formData.state || 'Unknown'}
                             </p>
                           </div>
                         )}
